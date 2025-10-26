@@ -47,3 +47,8 @@ schools:
     name: "茂名职业技术学院"
     initial: "M"
     resource_folder: "MMPT"  
+
+  - id: "SXGCXY"
+    name: "山西工程职业学院"
+    initial: "S"
+    resource_folder: "SXGCXY"  
