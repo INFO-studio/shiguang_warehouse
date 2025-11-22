@@ -49,8 +49,8 @@ const parseSchedule = (startDate, maxWeek, timeSlots, schedule) => ({
         teacher: course.instructorName?.slice(0, course.instructorName?.indexOf('-')) ?? '',
         position: course.position ?? course.roomName ?? '',
         day: course.weekDay ?? 0,
-        startSection: (course.periodFormat?.indexOf('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[0]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
-        endSection: (course.periodFormat?.indexOf('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[1]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
+        startSection: (course.periodFormat?.indexOf('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[0])) : (Number(course.periodFormat)) ?? 0,
+        endSection: (course.periodFormat?.indexOf('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[1])) : (Number(course.periodFormat)) ?? 0,
         weeks: (course.teachingWeek ?? '').split('').map((char, index) => (char === '1' ? index + 1 : null)).filter(week => week !== null),
     })),
 });
@@ -79,7 +79,7 @@ const saveSchedule = (parsedSchedule) => Promise.allSettled([
 
     const termId = await getTermId(accessToken);
 
-    await saveSchedule(parseSchedule(...(await Promise.allSettled([getStartDate(termId, accessToken), getMaxWeek(termId, accessToken), getTimeSlots(accessToken), getSchedule(termId, accessToken, studentId)])).map(result => result.value)));
+    console.log(parseSchedule(...(await Promise.allSettled([getStartDate(termId, accessToken), getMaxWeek(termId, accessToken), getTimeSlots(accessToken), getSchedule(termId, accessToken, studentId)])).map(result => result.value)));
 
     AndroidBridge.notifyTaskCompletion();
 })();
