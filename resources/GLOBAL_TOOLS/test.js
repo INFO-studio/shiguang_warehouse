@@ -1,8 +1,8 @@
-const getStudentId = () => document.querySelector('.trigger-user-name').innerText.match(/\[(.*?)\]/)?.[1]
+const getStudentId = () => document.querySelector('.trigger-user-name').innerText.match(/\[(.*?)\]/)?.[1];
 
-const checkLogin = () => window.location.hostname === 'my.cqu.edu.cn' && getStudentId() !== undefined
+const checkLogin = () => window.location.hostname === 'my.cqu.edu.cn' && getStudentId() !== undefined;
 
-const getAccessToken = () => localStorage.getItem('cqu_edu_ACCESS_TOKEN').replaceAll('"', '')
+const getAccessToken = () => localStorage.getItem('cqu_edu_ACCESS_TOKEN').replaceAll('"', '');
 
 const baseFetch = async (url, accessToken, method, body, description) => {
     const response = await fetch(
@@ -16,23 +16,23 @@ const baseFetch = async (url, accessToken, method, body, description) => {
             },
             body,
         }
-    )
+    );
     if (!response.ok) {
-        AndroidBridge.showToast(`获取${description}失败，请退出重试`)
-        throw new Error(`获取${description}失败: ${termResponse.status} ${termResponse.statusText}`)
+        AndroidBridge.showToast(`获取${description}失败，请退出重试`);
+        throw new Error(`获取${description}失败: ${termResponse.status} ${termResponse.statusText}`);
     }
-    return await response.json()
+    return await response.json();
 }
 
-const getTermId = async (accessToken) => (await baseFetch('https://my.cqu.edu.cn/api/resourceapi/session/info-detail', accessToken, 'GET', null, '学期信息')).curSessionId
+const getTermId = async (accessToken) => (await baseFetch('https://my.cqu.edu.cn/api/resourceapi/session/info-detail', accessToken, 'GET', null, '学期信息')).curSessionId;
 
-const getStartDate = async (termId, accessToken) => (new Date((await baseFetch(`https://my.cqu.edu.cn/api/resourceapi/session/info/${termId}`, accessToken, 'GET', null, '学期详情')).data.beginDate).toISOString().split('T')[0])
+const getStartDate = async (termId, accessToken) => (new Date((await baseFetch(`https://my.cqu.edu.cn/api/resourceapi/session/info/${termId}`, accessToken, 'GET', null, '学期详情')).data.beginDate).toISOString().split('T')[0]);
 
-const getMaxWeek = async (termId, accessToken) => (await baseFetch(`https://my.cqu.edu.cn/api/timetable/course/maxWeek/${termId}`, accessToken, 'GET', null, '最大周数')).data
+const getMaxWeek = async (termId, accessToken) => (await baseFetch(`https://my.cqu.edu.cn/api/timetable/course/maxWeek/${termId}`, accessToken, 'GET', null, '最大周数')).data;
 
-const getTimeSlots = async (accessToken) => (await baseFetch('https://my.cqu.edu.cn/api/workspace/time-pattern/session-time-pattern', accessToken, 'GET', null, '时间段配置')).data.classPeriodVOS
+const getTimeSlots = async (accessToken) => (await baseFetch('https://my.cqu.edu.cn/api/workspace/time-pattern/session-time-pattern', accessToken, 'GET', null, '时间段配置')).data.classPeriodVOS;
 
-const getSchedule = async (termId, accessToken, studentId) => (await baseFetch(`https://my.cqu.edu.cn/api/timetable/class/timetable/student/my-table-detail?sessionId=${termId}`, accessToken, 'POST', JSON.stringify([studentId]), '课程表')).classTimetableVOList
+const getSchedule = async (termId, accessToken, studentId) => (await baseFetch(`https://my.cqu.edu.cn/api/timetable/class/timetable/student/my-table-detail?sessionId=${termId}`, accessToken, 'POST', JSON.stringify([studentId]), '课程表')).classTimetableVOList;
 
 const parseSchedule = (startDate, maxWeek, timeSlots, schedule) => console.log(timeSlots) || ({
     courseConfig: {
@@ -53,32 +53,33 @@ const parseSchedule = (startDate, maxWeek, timeSlots, schedule) => console.log(t
         endSection: (course.periodFormat?.indexOf('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[1]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
         weeks: (course.teachingWeek ?? '').split('').map((char, index) => (char === '1' ? index + 1 : null)).filter(week => week !== null),
     })),
-})
+});
 
 const saveSchedule = (parsedSchedule) => Promise.allSettled([
     window.AndroidBridgePromise.saveCourseConfig(JSON.stringify(parsedSchedule?.courseConfig)),
     window.AndroidBridgePromise.saveImportedCourses(JSON.stringify(parsedSchedule?.courses)),
     window.AndroidBridgePromise.savePresetTimeSlots(JSON.stringify(parsedSchedule?.timeSlots)),
-])
+]);
+
 
 (async () => {
     if (!checkLogin()) {
-        AndroidBridge.showToast("尚未登录重庆大学教务系统，请先登录！")
-        throw new Error("未检测到登录状态")
+        AndroidBridge.showToast("尚未登录重庆大学教务系统，请先登录！");
+        throw new Error("未检测到登录状态");
     }
     
-    const studentId = getStudentId()
+    const studentId = getStudentId();
     
-    const accessToken = getAccessToken()
+    const accessToken = getAccessToken();
 
     if (!accessToken) {
-        AndroidBridge.showToast("尚未登录")
-        throw new Error("未找到访问令牌，请确保已登录 my.cqu.edu.cn")
+        AndroidBridge.showToast("尚未登录");
+        throw new Error("未找到访问令牌，请确保已登录 my.cqu.edu.cn");
     }
 
-    const termId = await getTermId(accessToken)
+    const termId = await getTermId(accessToken);
 
-    await saveSchedule(parseSchedule(...(await Promise.allSettled([getStartDate(termId, accessToken), getMaxWeek(termId, accessToken), getTimeSlots(accessToken), getSchedule(termId, accessToken, studentId)])).map(result => result.value)))
+    await saveSchedule(parseSchedule(...(await Promise.allSettled([getStartDate(termId, accessToken), getMaxWeek(termId, accessToken), getTimeSlots(accessToken), getSchedule(termId, accessToken, studentId)])).map(result => result.value)));
 
-    AndroidBridge.notifyTaskCompletion()
-})()
+    AndroidBridge.notifyTaskCompletion();
+})();
