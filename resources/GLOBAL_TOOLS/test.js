@@ -34,7 +34,7 @@ const getTimeSlots = async (accessToken) => (await baseFetch('https://my.cqu.edu
 
 const getSchedule = async (termId, accessToken, studentId) => (await baseFetch(`https://my.cqu.edu.cn/api/timetable/class/timetable/student/my-table-detail?sessionId=${termId}`, accessToken, 'POST', JSON.stringify([studentId]), '课程表')).classTimetableVOList;
 
-const parseSchedule = (startDate, maxWeek, timeSlots, schedule) => console.log(timeSlots) || ({
+const parseSchedule = (startDate, maxWeek, timeSlots, schedule) => ({
     courseConfig: {
         semesterStartDate: startDate,
         totalWeeks: maxWeek,
@@ -47,7 +47,7 @@ const parseSchedule = (startDate, maxWeek, timeSlots, schedule) => console.log(t
     courses: schedule.map((course) => ({
         name: course.courseName ?? '',
         teacher: course.instructorName?.slice(0, course.instructorName?.indexOf('-')) ?? '',
-        position: course.position ?? '',
+        position: course.position ?? course.roomName ?? '',
         day: course.weekDay ?? 0,
         startSection: (course.periodFormat?.indexOf('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[0]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
         endSection: (course.periodFormat?.indexOf('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[1]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
