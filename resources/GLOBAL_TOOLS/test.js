@@ -4,56 +4,44 @@ const checkLogin = () => window.location.hostname === 'my.cqu.edu.cn' && getStud
 
 const getAccessToken = () => localStorage.getItem('cqu_edu_ACCESS_TOKEN').replaceAll('"', '')
 
-const getTermId = async (accessToken) => {
-    const termResponse = await fetch(
-        'https://my.cqu.edu.cn/api/resourceapi/session/info-detail',
+const baseFetch = async (url, accessToken, method, body, description) => {
+    const response = await fetch(
+        url,
         {
-            method: 'GET',
+            method,
             credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${accessToken}`,
             },
+            body,
         }
     )
-    if (!termResponse.ok) {
-        AndroidBridge.showToast("获取学期信息失败，请退出重试")
-        throw new Error(`获取学期信息失败: ${termResponse.status} ${termResponse.statusText}`)
+    if (!response.ok) {
+        AndroidBridge.showToast(`获取${description}失败，请退出重试`)
+        throw new Error(`获取${description}失败: ${termResponse.status} ${termResponse.statusText}`)
     }
-    return (await termResponse.json()).curSessionId
+    return await response.json()
 }
 
-const getSchedule = async (termId, accessToken, studentId) => {
-    const scheduleResponse = await fetch(
-      `https://my.cqu.edu.cn/api/timetable/class/timetable/student/my-table-detail?sessionId=${termId}`,
-      {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify([studentId]),
-      }
-    )
-    if (!scheduleResponse.ok) {
-        AndroidBridge.showToast("获取课程表失败，请退出重试")
-        throw new Error(`获取课程表失败: ${termResponse.status} ${termResponse.statusText}`)
-    }
-    return await scheduleResponse.json()
-}
+const getTermId = async (accessToken) => (await baseFetch('https://my.cqu.edu.cn/api/resourceapi/session/info-detail', accessToken, 'GET', null, '学期信息')).curSessionId
 
-const parseSchedule = (schedule) => ({
-    courses: schedule.classTimetableVOList.map((course) => ({
-        name: course.courseName ?? '',
-        teacher: course.instructorName?.slice(0, course.instructorName?.findIndex('-')) ?? '',
-        position: course.position ?? '',
-        day: course.weekDay ?? 0,
-        startSection: (course.periodFormat?.findIndex('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[0]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
-        endSection: (course.periodFormat?.findIndex('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[1]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
-        weeks: (course.teachingWeek ?? '').split('').map((char, index) => (char === '1' ? index + 1 : null)).filter(week => week !== null),
-    })),
-    timeSlots: [
+const getTermInfo = async (termId, accessToken) => await baseFetch(`https://my.cqu.edu.cn/api/resourceapi/session/info/${termId}`, accessToken, 'GET', null, '学期详情')
+
+const getSchedule = async (termId, accessToken, studentId) => (await baseFetch(`https://my.cqu.edu.cn/api/timetable/class/timetable/student/my-table-detail?sessionId=${termId}`, accessToken, 'POST', JSON.stringify([studentId]), '课程表')).classTimetableVOList
+
+const getTimeSlots = async (termId, accessToken) => (await baseFetch(`https://my.cqu.edu.cn/api/time-pattern/session-time-pattern/${termId}`, accessToken, 'GET', null, '时间段配置')).classPeriodVOS
+
+const parseSchedule = (termInfo, timeSlots, schedule) => ({
+    courseConfig: {
+        semesterStartDate: (new Date(termInfo.beginDate).toISOString().split('T')[0]),
+        totalWeeks: Math.ceil(((new Date(termInfo.endDate)) - (new Date(termInfo.beginDate))) / (1000 * 60 * 60 * 24 * 7)) || schedule.reduce((pre, cur) => Math.max(pre, cur.weeks.lastIndexOf('1') + 1), 0),
+    },
+    timeSlots: timeSlots.map((timeSlot, index) => ({
+        number: timeSlot.periodOrder ?? index + 1,
+        startTime: timeSlot.startTime ?? '',
+        endTime: timeSlot.endTime ?? '',
+    })) + [
         {number: 1, startTime: "08:30", endTime: "09:15"},
         {number: 2, startTime: "09:25", endTime: "10:10"},
         {number: 3, startTime: "10:30", endTime: "11:15"},
@@ -67,6 +55,15 @@ const parseSchedule = (schedule) => ({
         {number: 11, startTime: "19:55", endTime: "20:40"},
         {number: 12, startTime: "20:50", endTime: "21:35"},
     ],
+    courses: schedule.map((course) => ({
+        name: course.courseName ?? '',
+        teacher: course.instructorName?.slice(0, course.instructorName?.findIndex('-')) ?? '',
+        position: course.position ?? '',
+        day: course.weekDay ?? 0,
+        startSection: (course.periodFormat?.findIndex('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[0]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
+        endSection: (course.periodFormat?.findIndex('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[1]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
+        weeks: (course.teachingWeek ?? '').split('').map((char, index) => (char === '1' ? index + 1 : null)).filter(week => week !== null),
+    })),
 })
 
 const saveSchedule = (parsedSchedule) => {
@@ -93,7 +90,7 @@ const saveSchedule = (parsedSchedule) => {
 
     const termId = getTermId(accessToken)
 
-    await saveSchedule(parseSchedule(await getSchedule(termId, accessToken, studentId)))
+    await saveSchedule(parseSchedule(...(await new Promise.all([getTermInfo(termId, accessToken), getTimeSlots(termId, accessToken), getSchedule(termId, accessToken, studentId)]))))
 
     AndroidBridge.notifyTaskCompletion()
 })()
