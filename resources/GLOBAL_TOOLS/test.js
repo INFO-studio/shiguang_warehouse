@@ -18,7 +18,7 @@ const baseFetch = async (url, accessToken, method, body, description) => {
         }
     )
     if (!response.ok) {
-        AndroidBridge.showToast(`获取${description}失败，请退出重试`)
+        AndroidBridge.showToast(`获取${description}失败: ${termResponse.status} ${termResponse.statusText}`)//, `获取${description}失败，请退出重试`)
         throw new Error(`获取${description}失败: ${termResponse.status} ${termResponse.statusText}`)
     }
     return await response.json()
@@ -26,16 +26,18 @@ const baseFetch = async (url, accessToken, method, body, description) => {
 
 const getTermId = async (accessToken) => (await baseFetch('https://my.cqu.edu.cn/api/resourceapi/session/info-detail', accessToken, 'GET', null, '学期信息')).curSessionId
 
-const getTermInfo = async (termId, accessToken) => await baseFetch(`https://my.cqu.edu.cn/api/resourceapi/session/info/${termId}`, accessToken, 'GET', null, '学期详情')
+const getStartDate = async (termId, accessToken) => (new Date((await baseFetch(`https://my.cqu.edu.cn/api/resourceapi/session/info/${termId}`, accessToken, 'GET', null, '学期详情')).data.beginDate).toISOString().split('T')[0])
+
+const getMaxWeek = async (termId, accessToken) => await baseFetch(`https://my.cqu.edu.cn/api/timetable/course/maxWeek/${termId}`, accessToken, 'GET', null, '最大周数')
+
+const getTimeSlots = async (accessToken) => (await baseFetch('https://my.cqu.edu.cn/api/workspace/time-pattern/session-time-pattern', accessToken, 'GET', null, '时间段配置')).data.classPeriodVOS
 
 const getSchedule = async (termId, accessToken, studentId) => (await baseFetch(`https://my.cqu.edu.cn/api/timetable/class/timetable/student/my-table-detail?sessionId=${termId}`, accessToken, 'POST', JSON.stringify([studentId]), '课程表')).classTimetableVOList
 
-const getTimeSlots = async (termId, accessToken) => (await baseFetch(`https://my.cqu.edu.cn/api/time-pattern/session-time-pattern/${termId}`, accessToken, 'GET', null, '时间段配置')).classPeriodVOS
-
-const parseSchedule = (termInfo, timeSlots, schedule) => ({
+const parseSchedule = (startDate, maxWeek, timeSlots, schedule) => console.log(timeSlots) || ({
     courseConfig: {
-        semesterStartDate: (new Date(termInfo.beginDate).toISOString().split('T')[0]),
-        totalWeeks: Math.ceil(((new Date(termInfo.endDate)) - (new Date(termInfo.beginDate))) / (1000 * 60 * 60 * 24 * 7)) || schedule.reduce((pre, cur) => Math.max(pre, cur.weeks.lastIndexOf('1') + 1), 0),
+        semesterStartDate: startDate,
+        totalWeeks: maxWeek,
     },
     timeSlots: timeSlots.map((timeSlot, index) => ({
         number: timeSlot.periodOrder ?? index + 1,
@@ -57,17 +59,18 @@ const parseSchedule = (termInfo, timeSlots, schedule) => ({
     ],
     courses: schedule.map((course) => ({
         name: course.courseName ?? '',
-        teacher: course.instructorName?.slice(0, course.instructorName?.findIndex('-')) ?? '',
+        teacher: course.instructorName?.slice(0, course.instructorName?.indexOf('-')) ?? '',
         position: course.position ?? '',
         day: course.weekDay ?? 0,
-        startSection: (course.periodFormat?.findIndex('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[0]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
-        endSection: (course.periodFormat?.findIndex('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[1]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
+        startSection: (course.periodFormat?.indexOf('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[0]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
+        endSection: (course.periodFormat?.indexOf('-') ?? 0) > 0 ? (Number(course.periodFormat?.split('-')[1]) + 1) : (Number(course.periodFormat) + 1) ?? 0,
         weeks: (course.teachingWeek ?? '').split('').map((char, index) => (char === '1' ? index + 1 : null)).filter(week => week !== null),
     })),
 })
 
 const saveSchedule = (parsedSchedule) => {
-    return new Promise.allSettled([
+    return Promise.allSettled([
+        window.AndroidBridgePromise.saveCourseConfig(JSON.stringify(parsedSchedule?.courseConfig)),
         window.AndroidBridgePromise.saveImportedCourses(JSON.stringify(parsedSchedule?.courses)),
         window.AndroidBridgePromise.savePresetTimeSlots(JSON.stringify(parsedSchedule?.timeSlots)),
     ])
@@ -88,9 +91,11 @@ const saveSchedule = (parsedSchedule) => {
         throw new Error("未找到访问令牌，请确保已登录 my.cqu.edu.cn")
     }
 
-    const termId = getTermId(accessToken)
+    const termId = await getTermId(accessToken)
 
-    await saveSchedule(parseSchedule(...(await new Promise.all([getTermInfo(termId, accessToken), getTimeSlots(termId, accessToken), getSchedule(termId, accessToken, studentId)]))))
+    console.log(await Promise.allSettled([getStartDate(termId, accessToken), getMaxWeek(termId, accessToken), getTimeSlots(accessToken), getSchedule(termId, accessToken, studentId)]))
+
+    await saveSchedule(parseSchedule(...(await Promise.allSettled([getStartDate(termId, accessToken), getMaxWeek(termId, accessToken), getTimeSlots(accessToken), getSchedule(termId, accessToken, studentId)])).map(result => result.value)))
 
     AndroidBridge.notifyTaskCompletion()
 })()
